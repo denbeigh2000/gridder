@@ -1,5 +1,6 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
 use chrono_tz::Tz;
+use clap::Parser;
 use regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 
@@ -24,16 +25,23 @@ lazy_static::lazy_static! {
     static ref TWO_LETTER_REGEX: Regex = Regex::new(r#"\b([a-zA-Z]{2})-(\d+)\b"#).unwrap();
 }
 
+#[derive(clap::Parser, Debug)]
+struct Args {
+    date: Option<String>,
+}
+
 #[tokio::main]
 async fn main() {
-    let now_utc = chrono::Utc::now();
-    let now = now_utc.with_timezone(&US_WEST_TZ);
+    let args = Args::parse();
+    let today = match args.date {
+        Some(input_str) => input_str.parse().expect("failed to parse time"),
+        None => chrono::Utc::now().with_timezone(&US_WEST_TZ).date_naive(),
+    };
 
     let prefix = String::from_utf8_lossy(&STR_URL_PREFIX);
     let suffix = String::from_utf8_lossy(&STR_URL_SUFFIX);
-
-    let date_fmt = now.format("%Y/%m/%d");
-    let url_str = format!("{prefix}/{date_fmt}/{suffix}");
+    let date_str = today.format("%Y/%m/%d");
+    let url_str = format!("{prefix}/{date_str}/{suffix}");
 
     eprintln!("{url_str}");
 
@@ -61,7 +69,7 @@ async fn main() {
     let table_info = extract_table_info(table);
 
     eprintln!("lengths:");
-    let csv_name = now.format("./%Y-%m-%d-lengths.csv").to_string();
+    let csv_name = today.format("./%Y-%m-%d-lengths.csv").to_string();
     let mut writer = csv::Writer::from_path(csv_name).expect("failed to open file");
 
     for ((letter, len), quantity) in table_info.iter() {
@@ -78,7 +86,7 @@ async fn main() {
     writeln!(&mut stdout).expect("failed to write empty line");
     // let mut writer = csv::Writer::from_writer(stdout);
     // let mut
-    let csv_name = now.format("./%Y-%m-%d-pairs.csv").to_string();
+    let csv_name = today.format("./%Y-%m-%d-pairs.csv").to_string();
     let mut writer = csv::Writer::from_path(csv_name).expect("failed to open pairs file");
     eprintln!("pairs:");
     for ((a, b), v) in pairs.iter() {
