@@ -90,18 +90,20 @@ enum Error {
 
 async fn real_main() -> Result<(), Error> {
     let args = Args::parse();
-    let today = match args.date {
-        Some(input_str) => input_str
-            .parse()
-            .map_err(|e| Error::ParsingDate(input_str, e))?,
-        None => chrono::Utc::now().with_timezone(&US_WEST_TZ).date_naive(),
-    };
+    let date = args
+        .date
+        // If a datestring was given, try to parse it into a NaiveDate
+        .map(|i| i.parse().map_err(|e| Error::ParsingDate(i, e)))
+        // Put the Result<..> on the outside, and exit if it failed
+        .transpose()?
+        // If no date was given, fall back to using today (in US-Western)
+        .unwrap_or_else(|| chrono::Utc::now().with_timezone(&US_WEST_TZ).date_naive());
 
-    let body = fetch_for_date(today).await?;
+    let body = fetch_for_date(date).await?;
     let (pairs, table_info) = parse_content(&body).expect("failed to extract info from document");
 
     let template = args.filename_format.as_deref().unwrap_or(DEFAULT_FORMAT);
-    let lengths_path = prepare_csv_path(&today, template, "lengths")
+    let lengths_path = prepare_csv_path(&date, template, "lengths")
         .map_err(|e| Error::PreparingCSVPath("lengths", e))?;
     let mut writer = csv::Writer::from_path(&lengths_path)
         .map_err(|err| Error::OpeningCSVFile("lengths", err))?;
@@ -116,7 +118,7 @@ async fn real_main() -> Result<(), Error> {
             .map_err(|e| Error::WritingCSVRecord("lengths", e))?;
     }
 
-    let pairs_path = prepare_csv_path(&today, template, "pairs")
+    let pairs_path = prepare_csv_path(&date, template, "pairs")
         .map_err(|e| Error::PreparingCSVPath("pairs", e))?;
     let mut writer = csv::Writer::from_path(&pairs_path)
         .map_err(|error| Error::OpeningCSVFile("pairs", error))?;
