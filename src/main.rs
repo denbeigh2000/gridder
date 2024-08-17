@@ -1,24 +1,16 @@
-use base64::{prelude::BASE64_STANDARD, Engine};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use clap::Parser;
 
 use std::path::PathBuf;
 
+use gridder::fetch::{fetch_for_date, FetchDataError};
 use gridder::parse::parse_content;
 
 // New releases happen at midnight US-West time
 const US_WEST_TZ: Tz = chrono_tz::America::Los_Angeles;
 
-const URL_PREFIX: &str = "aHR0cHM6Ly93d3cubnl0aW1lcy5jb20=";
-const URL_SUFFIX: &str = "Y3Jvc3N3b3Jkcy9zcGVsbGluZy1iZWUtZm9ydW0uaHRtbA==";
-
 const DEFAULT_FORMAT: &str = "./%Y-%m-%d-_ITEM_.csv";
-
-lazy_static::lazy_static! {
-    static ref STR_URL_PREFIX: Vec<u8> = BASE64_STANDARD.decode(URL_PREFIX).unwrap();
-    static ref STR_URL_SUFFIX: Vec<u8> = BASE64_STANDARD.decode(URL_SUFFIX).unwrap();
-}
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -86,12 +78,8 @@ fn prepare_csv_path(
 enum Error {
     #[error("failed to parse {0} into a date ({1})")]
     ParsingDate(String, chrono::ParseError),
-    #[error("failed to get info page ({0})")]
-    FetchingUrl(reqwest::Error),
-    #[error("got bad http status from server ({0})")]
-    BadResponse(reqwest::Error),
-    #[error("failed to read response body ({0})")]
-    ReadingBody(reqwest::Error),
+    #[error("failed to fetch site data: {0}")]
+    FetchingSiteData(#[from] FetchDataError),
     #[error("error preparing CSV path for {0} ({1})")]
     PreparingCSVPath(&'static str, PreparingCSVPathError),
     #[error("error opening ouptut file for {0} ({1}")]
@@ -109,19 +97,7 @@ async fn real_main() -> Result<(), Error> {
         None => chrono::Utc::now().with_timezone(&US_WEST_TZ).date_naive(),
     };
 
-    let prefix = String::from_utf8_lossy(&STR_URL_PREFIX);
-    let suffix = String::from_utf8_lossy(&STR_URL_SUFFIX);
-    let date_str = today.format("%Y/%m/%d");
-    let url_str = format!("{prefix}/{date_str}/{suffix}");
-
-    // TODO: subtle user agent?
-    let resp = reqwest::get(url_str)
-        .await
-        .map_err(Error::FetchingUrl)?
-        .error_for_status()
-        .map_err(Error::BadResponse)?;
-
-    let body = resp.text().await.map_err(Error::ReadingBody)?;
+    let body = fetch_for_date(today).await?;
     let (pairs, table_info) = parse_content(&body).expect("failed to extract info from document");
 
     let template = args.filename_format.as_deref().unwrap_or(DEFAULT_FORMAT);
