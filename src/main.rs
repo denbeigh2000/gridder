@@ -12,7 +12,8 @@ const US_WEST_TZ: Tz = chrono_tz::America::Los_Angeles;
 
 #[derive(clap::Parser, Debug)]
 struct Args {
-    /// The date to retrieve data for.
+    /// The date to retrieve data for. If unspecified, the data for today will
+    /// be requested.
     /// Format: YYYY-MM-DD
     date: Option<String>,
 
