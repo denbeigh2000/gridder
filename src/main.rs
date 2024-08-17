@@ -1,6 +1,6 @@
-use chrono::NaiveDate;
 use chrono_tz::Tz;
 use clap::Parser;
+use gridder::sheets::{NewSheetError, SheetCreationError, SheetManager};
 
 use std::path::PathBuf;
 
@@ -10,68 +10,17 @@ use gridder::parse::parse_content;
 // New releases happen at midnight US-West time
 const US_WEST_TZ: Tz = chrono_tz::America::Los_Angeles;
 
-const DEFAULT_FORMAT: &str = "./%Y-%m-%d-_ITEM_.csv";
-
 #[derive(clap::Parser, Debug)]
 struct Args {
     /// The date to retrieve data for.
     /// Format: YYYY-MM-DD
     date: Option<String>,
 
-    #[arg(short, long)]
-    /// The format of the filename to write files to.
-    /// _ITEM_ will be replaced with "pairs" or "lengths".
-    filename_format: Option<String>,
-}
+    #[arg(short = 'i', long, env = "GRIDDER_SPREADSHEET_ID")]
+    spreadsheet_id: String,
 
-#[derive(thiserror::Error, Debug)]
-enum PreparingCSVPathError {
-    #[error("filename template must not end in a slash ({0})")]
-    GivenDirectory(PathBuf),
-    #[error("{0} already exists as a directory")]
-    ExistsAsDirectory(PathBuf),
-    #[error("failed to mkdir {0} ({1})")]
-    Mkdir(PathBuf, std::io::Error),
-    #[error("failed to canonicalise {0} ({1})")]
-    CanonicalisingPath(PathBuf, std::io::Error),
-}
-
-fn prepare_csv_path(
-    d: &NaiveDate,
-    template: &str,
-    key: &str,
-) -> Result<PathBuf, PreparingCSVPathError> {
-    let t = match template {
-        "" => DEFAULT_FORMAT,
-        t => t,
-    };
-    let csv_name = d.format(&t.replace("_ITEM_", key)).to_string();
-    let csv_path = PathBuf::from(&csv_name);
-
-    let dirname = match csv_path.parent() {
-        Some(d) => d,
-        // If somebody really wants to write to /, that's okay I guess.
-        None => return Ok(csv_path),
-    };
-
-    if !dirname.exists() {
-        std::fs::create_dir_all(dirname)
-            .map_err(|e| PreparingCSVPathError::Mkdir(dirname.to_path_buf(), e))?
-    } else if csv_path.is_dir() {
-        return Err(PreparingCSVPathError::ExistsAsDirectory(csv_path));
-    }
-
-    match csv_path.file_name() {
-        Some(tpl_filename) => {
-            let path = dirname
-                .canonicalize()
-                .map_err(|e| PreparingCSVPathError::CanonicalisingPath(dirname.to_path_buf(), e))?
-                .join(tpl_filename);
-
-            Ok(path)
-        }
-        None => Err(PreparingCSVPathError::GivenDirectory(csv_path)),
-    }
+    #[arg(short = 'p', long, env = "GRIDDER_SERVICE_ACCOUNT_FILE")]
+    service_account_file: PathBuf,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -80,12 +29,10 @@ enum Error {
     ParsingDate(String, chrono::ParseError),
     #[error("failed to fetch site data: {0}")]
     FetchingSiteData(#[from] FetchDataError),
-    #[error("error preparing CSV path for {0} ({1})")]
-    PreparingCSVPath(&'static str, PreparingCSVPathError),
-    #[error("error opening ouptut file for {0} ({1}")]
-    OpeningCSVFile(&'static str, csv::Error),
-    #[error("error writing output line for {0} ({1})")]
-    WritingCSVRecord(&'static str, csv::Error),
+    #[error("failed to create Sheets API client: {0}")]
+    CreatingSheetManager(#[from] NewSheetError),
+    #[error("failed to create new daily sheet: {0}")]
+    UpdatingSpreadsheet(#[from] SheetCreationError),
 }
 
 async fn real_main() -> Result<(), Error> {
@@ -102,43 +49,10 @@ async fn real_main() -> Result<(), Error> {
     let body = fetch_for_date(date).await?;
     let (pairs, table_info) = parse_content(&body).expect("failed to extract info from document");
 
-    let template = args.filename_format.as_deref().unwrap_or(DEFAULT_FORMAT);
-    let lengths_path = prepare_csv_path(&date, template, "lengths")
-        .map_err(|e| Error::PreparingCSVPath("lengths", e))?;
-    let mut writer = csv::Writer::from_path(&lengths_path)
-        .map_err(|err| Error::OpeningCSVFile("lengths", err))?;
-
-    for ((letter, len), quantity) in table_info.iter() {
-        // NOTE: csv writer expects these to be representable as &[u8], even if
-        // writing individual records, so we still need to convert these to
-        // strings.
-        let record = [letter.to_string(), len.to_string(), quantity.to_string()];
-        writer
-            .write_record(&record)
-            .map_err(|e| Error::WritingCSVRecord("lengths", e))?;
-    }
-
-    let pairs_path = prepare_csv_path(&date, template, "pairs")
-        .map_err(|e| Error::PreparingCSVPath("pairs", e))?;
-    let mut writer = csv::Writer::from_path(&pairs_path)
-        .map_err(|error| Error::OpeningCSVFile("pairs", error))?;
-    for ((a, b), v) in pairs.iter() {
-        let record = [format!("{a}{b}"), v.to_string()];
-        writer
-            .write_record(record)
-            .map_err(|e| Error::WritingCSVRecord("pairs", e))?;
-    }
-
-    eprintln!("operation success!");
-    eprintln!("pairs written to:   {}", pairs_path.to_string_lossy());
-    eprintln!("lengths written to: {}", lengths_path.to_string_lossy());
-
-    eprintln!();
-    eprintln!("instructions:\n---");
-
-    eprintln!("import length CSV to B3");
-    eprintln!("import pair   CSV to F3");
-    eprintln!("remember to replace cell data!");
+    let sheets_client = SheetManager::new(&args.spreadsheet_id, args.service_account_file).await?;
+    sheets_client
+        .create_for_date(&date, &pairs, &table_info)
+        .await?;
 
     Ok(())
 }
