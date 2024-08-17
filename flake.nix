@@ -23,10 +23,9 @@
           overlays = [ fenix.overlays.default ];
         };
 
-        macPkgs =
-          if pkgs.targetPlatform.isDarwin
-          then [ pkgs.darwin.apple_sdk.frameworks.SystemConfiguration ]
-          else [ ];
+        macPkgs = with pkgs; (lib.optionals
+          targetPlatform.isDarwin
+          [ darwin.apple_sdk.frameworks.SystemConfiguration libiconv ]);
 
         # TODO: rustfmt-nightly
         toolchain = pkgs.fenix.complete.withComponents [
@@ -51,7 +50,7 @@
           default = pkg;
         };
         devShells.default = pkgs.mkShell {
-          packages = [ toolchain pkgs.rust-analyzer-nightly pkgs.libiconv ] ++ macPkgs;
+          packages = [ toolchain pkgs.rust-analyzer-nightly ] ++ macPkgs;
         };
       }));
 }
