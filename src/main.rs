@@ -2,11 +2,10 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use clap::Parser;
-use regex::Regex;
-use scraper::{ElementRef, Html, Selector};
 
-use std::collections::HashMap;
 use std::path::PathBuf;
+
+use gridder::parse::parse_content;
 
 // New releases happen at midnight US-West time
 const US_WEST_TZ: Tz = chrono_tz::America::Los_Angeles;
@@ -17,15 +16,8 @@ const URL_SUFFIX: &str = "Y3Jvc3N3b3Jkcy9zcGVsbGluZy1iZWUtZm9ydW0uaHRtbA==";
 const DEFAULT_FORMAT: &str = "./%Y-%m-%d-_ITEM_.csv";
 
 lazy_static::lazy_static! {
-    static ref TABLE_SELECTOR: Selector = Selector::parse("table.table").unwrap();
-    static ref TR_SELECTOR: Selector = Selector::parse("tr.row").unwrap();
-    static ref TD_SELECTOR: Selector = Selector::parse("td.cell").unwrap();
-    static ref CONTENT_SELECTOR: Selector = Selector::parse("p.content").unwrap();
-
     static ref STR_URL_PREFIX: Vec<u8> = BASE64_STANDARD.decode(URL_PREFIX).unwrap();
     static ref STR_URL_SUFFIX: Vec<u8> = BASE64_STANDARD.decode(URL_SUFFIX).unwrap();
-
-    static ref TWO_LETTER_REGEX: Regex = Regex::new(r#"\b([a-zA-Z]{2})-(\d+)\b"#).unwrap();
 }
 
 #[derive(clap::Parser, Debug)]
@@ -130,20 +122,7 @@ async fn real_main() -> Result<(), Error> {
         .map_err(Error::BadResponse)?;
 
     let body = resp.text().await.map_err(Error::ReadingBody)?;
-    let page = Html::parse_document(&body);
-
-    let table = match page.select(&TABLE_SELECTOR).next() {
-        Some(i) => i,
-        None => panic!("missing table on page"),
-    };
-
-    let main_node = table.parent().unwrap();
-    let main_el = ElementRef::wrap(main_node).unwrap();
-
-    let two_letters_el = main_el.select(&CONTENT_SELECTOR).nth(4).unwrap();
-
-    let pairs = extract_pair_info(two_letters_el);
-    let table_info = extract_table_info(table);
+    let (pairs, table_info) = parse_content(&body).expect("failed to extract info from document");
 
     let template = args.filename_format.as_deref().unwrap_or(DEFAULT_FORMAT);
     let lengths_path = prepare_csv_path(&today, template, "lengths")
@@ -192,65 +171,4 @@ async fn main() {
         eprintln!("error: {e}");
         std::process::exit(1);
     }
-}
-
-fn extract_pair_info(node: ElementRef) -> HashMap<(char, char), usize> {
-    let text_vec = node.text().collect::<Vec<_>>();
-    let text = text_vec.concat();
-
-    let mut pair_counts = HashMap::default();
-    for (_, [prefix, count]) in TWO_LETTER_REGEX.captures_iter(&text).map(|c| c.extract()) {
-        assert!(prefix.len() == 2);
-        let i: usize = count.parse().expect("received negative count");
-        let mut chars = prefix.chars();
-        let char1 = chars.next().unwrap();
-        let char2 = chars.next().unwrap();
-        pair_counts.insert((char1, char2), i);
-    }
-
-    pair_counts
-}
-
-fn extract_table_info(node: ElementRef) -> HashMap<(char, usize), usize> {
-    let mut rows = node.select(&TR_SELECTOR);
-    // Expecting 8 rows: 1 header, 6 letters, 1 sum
-    let header = rows.next().unwrap();
-    let (_, values) = extract_table_row_info(header);
-
-    let mut items = HashMap::default();
-    for row in rows {
-        let (l, quants) = extract_table_row_info(row);
-        let letter = l.unwrap();
-        if letter == 'Σ' {
-            continue;
-        }
-
-        for (i, quantity) in quants.iter().enumerate() {
-            items.insert((letter, values[i]), *quantity);
-        }
-    }
-
-    items
-}
-
-fn extract_table_row_info(tr: ElementRef) -> (Option<char>, Vec<usize>) {
-    let mut els = tr.select(&TD_SELECTOR);
-    let header = els.next().unwrap().text().collect::<Vec<_>>().concat();
-    let header_char = header.trim().chars().next();
-
-    let mut items = Vec::new();
-    for el in els {
-        let text = el.text().collect::<Vec<_>>().concat();
-        let num = match text.trim() {
-            // This doesn't matter, and will get dropped just below anyway
-            "Σ" => 0,
-            "-" => 0,
-            v => v.parse().unwrap(),
-        };
-        items.push(num);
-    }
-
-    // drop the "sum" item
-    items.truncate(items.len() - 1);
-    (header_char, items)
 }
