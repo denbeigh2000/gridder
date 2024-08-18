@@ -70,6 +70,7 @@ in
         environment = {
           GRIDDER_SPREADSHEET_ID = cfg.spreadsheetID;
           GRIDDER_SERVICE_ACCOUNT_FILE = cfg.serviceAccountPath;
+          LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.openssl ];
         };
         unitConfig.description = "Gridder generation task";
         serviceConfig = {

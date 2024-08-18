@@ -37,9 +37,15 @@
           overlays = [ fenix.overlays.default ];
         };
 
-        macPkgs = with pkgs; (lib.optionals
+        macDeps = with pkgs; (lib.optionals
           targetPlatform.isDarwin
           [ darwin.apple_sdk.frameworks.SystemConfiguration libiconv ]);
+
+        linuxDeps = with pkgs; (lib.optionals
+          targetPlatform.isLinux
+          [ pkg-config openssl ]);
+
+        systemDeps = macDeps ++ linuxDeps;
 
         # TODO: rustfmt-nightly
         toolchain = pkgs.fenix.complete.withComponents [
@@ -56,6 +62,7 @@
 
         pkg = naersk'.buildPackage {
           src = ./.;
+          buildInputs = systemDeps;
         };
       in
       {
@@ -64,7 +71,7 @@
           default = pkg;
         };
         devShells.default = pkgs.mkShell {
-          packages = [ toolchain pkgs.rust-analyzer-nightly ] ++ macPkgs;
+          packages = [ toolchain pkgs.rust-analyzer-nightly ] ++ systemDeps;
         };
       }));
 }
