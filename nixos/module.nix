@@ -67,12 +67,12 @@ in
     systemd = {
       services.gridder = {
         enable = true;
+        description = "Gridder generation task";
         environment = {
           GRIDDER_SPREADSHEET_ID = cfg.spreadsheetID;
           GRIDDER_SERVICE_ACCOUNT_FILE = cfg.serviceAccountPath;
           LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.openssl ];
         };
-        unitConfig.description = "Gridder generation task";
         serviceConfig = {
           ExecStart = "${cfg.package}/bin/gridder";
           User = cfg.username;
@@ -81,7 +81,7 @@ in
 
       timers.gridder = {
         enable = true;
-        unitConfig.Description = "Run gridder generation task daily";
+        description = "Run gridder generation task daily";
         timerConfig = {
           Unit = "gridder.service";
           OnCalendar =
