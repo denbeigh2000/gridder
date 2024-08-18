@@ -59,14 +59,16 @@ pub enum SheetCreationError {
 fn pairs_to_values(pairs: &PairInfo) -> Vec<Vec<serde_json::Value>> {
     pairs
         .iter()
-        .map(|((a, b), v)| vec![json!(format!("{a}{b}")), json!(v)])
+        .filter(|(_, count)| **count > 0)
+        .map(|((a, b), count)| vec![json!(format!("{a}{b}")), json!(count)])
         .collect()
 }
 
 fn lengths_to_values(lengths: &LengthInfo) -> Vec<Vec<serde_json::Value>> {
     lengths
         .iter()
-        .map(|((letter, len), quantity)| vec![json!(letter), json!(len), json!(quantity)])
+        .filter(|(_, count)| **count > 0)
+        .map(|((letter, len), count)| vec![json!(letter), json!(len), json!(count)])
         .collect()
 }
 

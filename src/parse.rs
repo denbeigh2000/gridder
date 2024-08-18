@@ -85,8 +85,7 @@ fn extract_table_row_info(tr: ElementRef) -> (Option<char>, Vec<usize>) {
         let text = el.text().collect::<Vec<_>>().concat();
         let num = match text.trim() {
             // This doesn't matter, and will get dropped just below anyway
-            "Σ" => 0,
-            "-" => 0,
+            "Σ" | "-" => 0,
             v => v.parse().unwrap(),
         };
         items.push(num);
