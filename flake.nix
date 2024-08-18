@@ -15,11 +15,19 @@
   outputs = { self, nixpkgs, flake-utils, fenix, naersk }:
     let
       module = import ./nixos/module.nix;
+      overlay = (final: prev: {
+        gridder = self.outputs.packages.${prev.system}.gridder;
+      });
     in
     {
       nixosModules = {
         default = module;
         gridder = module;
+      };
+
+      overlays = {
+        default = overlay;
+        gridder = overlay;
       };
     } //
     (flake-utils.lib.eachDefaultSystem (system:
