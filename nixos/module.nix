@@ -39,9 +39,31 @@ in
       '';
       default = 2;
     };
+
+    username = mkOption {
+      type = types.str;
+      description = "Username of gridder service user";
+      default = "gridder";
+    };
+
+    group = mkOption {
+      type = types.str;
+      description = "Name of gridder service user's primary group";
+      default = "gridder";
+    };
   };
 
   config = mkIf cfg.enable {
+    users.users.gridder = {
+      name = cfg.username;
+      group = cfg.group;
+      isSystemUser = true;
+    };
+
+    users.groups.gridder = {
+      name = cfg.group;
+    };
+
     systemd = {
       services.gridder = {
         enable = true;
@@ -52,6 +74,7 @@ in
         unitConfig.description = "Gridder generation task";
         serviceConfig = {
           ExecStart = "${cfg.package}/bin/gridder";
+          User = cfg.username;
         };
       };
 
