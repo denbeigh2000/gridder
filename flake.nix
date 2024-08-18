@@ -14,8 +14,14 @@
 
   outputs = { self, nixpkgs, flake-utils, fenix, naersk }:
     let
-
+      module = import ./nixos/module.nix;
     in
+    {
+      nixosModules = {
+        default = module;
+        gridder = module;
+      };
+    } //
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
