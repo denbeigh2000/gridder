@@ -3,6 +3,8 @@ use chrono::NaiveDate;
 
 const URL_PREFIX: &str = "aHR0cHM6Ly93d3cubnl0aW1lcy5jb20=";
 const URL_SUFFIX: &str = "Y3Jvc3N3b3Jkcy9zcGVsbGluZy1iZWUtZm9ydW0uaHRtbA==";
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0";
 
 lazy_static::lazy_static! {
     static ref STR_URL_PREFIX: Vec<u8> = BASE64_STANDARD.decode(URL_PREFIX).unwrap();
@@ -11,6 +13,10 @@ lazy_static::lazy_static! {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchDataError {
+    #[error("failed to build http client: ({0})")]
+    BuildingClient(reqwest::Error),
+    #[error("failed to construct request: ({0})")]
+    BuildingRequest(reqwest::Error),
     #[error("failed to get info page ({0})")]
     FetchingUrl(reqwest::Error),
     #[error("got bad http status from server ({0})")]
@@ -25,8 +31,18 @@ pub async fn fetch_for_date(date: NaiveDate) -> Result<String, FetchDataError> {
     let date_str = date.format("%Y/%m/%d");
     let url_str = format!("{prefix}/{date_str}/{suffix}");
 
-    // TODO: subtle user agent?
-    let resp = reqwest::get(url_str)
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(FetchDataError::BuildingClient)?;
+
+    let req = client
+        .get(url_str)
+        .build()
+        .map_err(FetchDataError::BuildingRequest)?;
+
+    let resp = client
+        .execute(req)
         .await
         .map_err(FetchDataError::FetchingUrl)?
         .error_for_status()
