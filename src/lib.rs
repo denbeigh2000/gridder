@@ -2,6 +2,8 @@ pub mod fetch;
 pub mod parse;
 pub mod sheets;
 
+mod user_agents;
+
 use std::collections::HashMap;
 
 pub type PairInfo = HashMap<(char, char), usize>;
