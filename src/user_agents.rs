@@ -1,14 +1,18 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
+use rand::seq::SliceRandom;
 
 const CHROMIUM_RELEASE_JSON_URL: &str = "https://chromiumdash.appspot.com/fetch_releases";
-const UA_PREFIX: &str = "TW96aWxsYS81LjAgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbzsgY29tcGF0aWJsZTsgR29vZ2xlYm90LzIuMTsgK2h0dHA6Ly93d3cuZ29vZ2xlLmNvbS9ib3QuaHRtbCkgQ2hyb21lLw==";
+const UA_PREFIX_1: &str = "TW96aWxsYS81LjAgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbzsgY29tcGF0aWJsZTsgRw==";
+const UA_PREFIX_2: &str = "b29nbGVibw==";
+const UA_PREFIX_3: &str = "dC8yLjE7ICtodHRwOi8vd3d3Lmdvb2dsZS5jb20vYm90Lmh0bWwpIENocm9tZS8=";
 const UA_SUFFIX: &str = "IFNhZmFyaS81MzcuMzY=";
 
 const TARGET_CHROMIUM_CHANNEL: &str = "Stable";
 const TARGET_CHROMIUM_PLATFORM: &str = "Win32";
 
 lazy_static::lazy_static! {
-    static ref UA_PREFIX_STR: Vec<u8> = BASE64_STANDARD.decode(UA_PREFIX).unwrap();
+    static ref UA_PREFIX_1_STR: Vec<u8> = BASE64_STANDARD.decode(UA_PREFIX_1).unwrap();
+    static ref UA_PREFIX_3_STR: Vec<u8> = BASE64_STANDARD.decode(UA_PREFIX_3).unwrap();
     static ref UA_SUFFIX_STR: Vec<u8> = BASE64_STANDARD.decode(UA_SUFFIX).unwrap();
 }
 
@@ -92,8 +96,15 @@ pub async fn get_user_agent() -> Result<String, UserAgentConstructionError> {
 
     let version = target_release.version;
 
+    let mut mid = BASE64_STANDARD.decode(UA_PREFIX_2).unwrap();
+    // Shuffle the middle of our string to avoid presenting the same thing
+    // every day.
+    mid.shuffle(&mut rand::rng());
+
     let mut ua = String::new();
-    ua.push_str(&String::from_utf8_lossy(&UA_PREFIX_STR));
+    ua.push_str(&String::from_utf8_lossy(&UA_PREFIX_1_STR));
+    ua.push_str(&String::from_utf8_lossy(&mid));
+    ua.push_str(&String::from_utf8_lossy(&UA_PREFIX_3_STR));
     ua.push_str(&version);
     ua.push_str(&String::from_utf8_lossy(&UA_SUFFIX_STR));
 
