@@ -1,6 +1,7 @@
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use chrono::NaiveDate;
+use cuimp::CuimpOptions;
 
 use crate::user_agents::{get_user_agent, UserAgentConstructionError};
 
@@ -13,25 +14,13 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum WebFetchError {
-    #[error("failed to construct request: ({0})")]
-    BuildingRequest(reqwest::Error),
-    #[error("failed to get info page ({0})")]
-    FetchingUrl(reqwest::Error),
-    #[error("got bad http status from server ({0})")]
-    BadResponse(reqwest::Error),
-    #[error("failed to read response body ({0})")]
-    ReadingBody(reqwest::Error),
-}
-
-#[derive(Debug, thiserror::Error)]
 pub enum FetchDataError {
     #[error("error building client: {0}")]
-    BuildingClient(#[from] reqwest::Error),
+    BuildingClient(cuimp::CuimpError),
     #[error("error getting user agent: ({0})")]
     GettingUserAgent(#[from] UserAgentConstructionError),
     #[error("error fetching NYT game page: {0}")]
-    GettingData(#[from] WebFetchError),
+    GettingData(#[from] cuimp::CuimpError),
 }
 
 pub async fn fetch_for_date(date: NaiveDate) -> Result<String, FetchDataError> {
@@ -39,27 +28,22 @@ pub async fn fetch_for_date(date: NaiveDate) -> Result<String, FetchDataError> {
     let suffix = String::from_utf8_lossy(&STR_URL_SUFFIX);
     let date_str = date.format("%Y/%m/%d");
     let url_str = format!("{prefix}/{date_str}/{suffix}");
-
     let user_agent = get_user_agent().await?;
+    let curl_args = [
+        "--compressed".to_string(),
+        "--header".to_string(),
+        format!("User-Agent: {user_agent}"),
+        "--header".to_string(),
+        "Accept: text/html".to_string(),
+        "--header".to_string(),
+        "Accept-Language: en-US".to_string(),
+    ];
+    let options = CuimpOptions {
+        extra_curl_args: Some(curl_args.into()),
+        ..Default::default()
+    };
+    let mut client = cuimp::CuimpHttp::new(options).map_err(FetchDataError::BuildingClient)?;
 
-    let client = reqwest::Client::builder()
-        .user_agent(user_agent)
-        .build()
-        .map_err(FetchDataError::BuildingClient)?;
-
-    let req = client
-        .get(url_str)
-        .header("Host", "www.nytimes.com")
-        .build()
-        .map_err(WebFetchError::BuildingRequest)?;
-
-    let resp = client
-        .execute(req)
-        .await
-        .map_err(WebFetchError::FetchingUrl)?
-        .error_for_status()
-        .map_err(WebFetchError::BadResponse)?;
-
-    let resp = resp.text().await.map_err(WebFetchError::ReadingBody)?;
-    Ok(resp)
+    let resp = client.get(&url_str).await?;
+    Ok(resp.data)
 }
