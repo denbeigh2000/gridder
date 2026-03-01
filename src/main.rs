@@ -22,6 +22,9 @@ struct Args {
 
     #[arg(short = 'p', long, env = "GRIDDER_SERVICE_ACCOUNT_FILE")]
     service_account_file: PathBuf,
+
+    #[arg(short = 'b', long, env = "GRIDDER_CURL_IMPERSONATE_BINARY_PATH")]
+    binary_path: Option<PathBuf>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -47,7 +50,7 @@ async fn real_main() -> Result<(), Error> {
         // If no date was given, fall back to using today (in US-Western)
         .unwrap_or_else(|| chrono::Utc::now().with_timezone(&US_WEST_TZ).date_naive());
 
-    let body = fetch_for_date(date).await?;
+    let body = fetch_for_date(date, args.binary_path).await?;
     let (pairs, table_info) = parse_content(&body).expect("failed to extract info from document");
 
     let sheets_client = SheetManager::new(&args.spreadsheet_id, args.service_account_file).await?;

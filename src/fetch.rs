@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use chrono::NaiveDate;
@@ -23,7 +25,10 @@ pub enum FetchDataError {
     GettingData(#[from] cuimp::CuimpError),
 }
 
-pub async fn fetch_for_date(date: NaiveDate) -> Result<String, FetchDataError> {
+pub async fn fetch_for_date(
+    date: NaiveDate,
+    binary_path: Option<PathBuf>,
+) -> Result<String, FetchDataError> {
     let prefix = String::from_utf8_lossy(&STR_URL_PREFIX);
     let suffix = String::from_utf8_lossy(&STR_URL_SUFFIX);
     let date_str = date.format("%Y/%m/%d");
@@ -40,6 +45,7 @@ pub async fn fetch_for_date(date: NaiveDate) -> Result<String, FetchDataError> {
     ];
     let options = CuimpOptions {
         extra_curl_args: Some(curl_args.into()),
+        path: binary_path.map(|p| p.display().to_string()),
         ..Default::default()
     };
     let mut client = cuimp::CuimpHttp::new(options).map_err(FetchDataError::BuildingClient)?;
