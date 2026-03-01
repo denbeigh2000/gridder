@@ -1,4 +1,9 @@
-{ pkgs, lib, config, options, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 
 let
   inherit (lib)
@@ -6,7 +11,8 @@ let
     mkIf
     mkOption
     mkPackageOption
-    types;
+    types
+    ;
 
   cfg = config.gridder;
 in
@@ -18,6 +24,10 @@ in
     # NOTE: we expect the user to apply the overlay themselves
     package = mkPackageOption pkgs "Gridder" {
       default = [ "gridder" ];
+    };
+
+    cuimpPkg = mkPackageOption pkgs "curl-impersonate" {
+      default = [ "curl-impersonate" ];
     };
 
     spreadsheetID = mkOption {
@@ -71,6 +81,7 @@ in
         environment = {
           GRIDDER_SPREADSHEET_ID = cfg.spreadsheetID;
           GRIDDER_SERVICE_ACCOUNT_FILE = cfg.serviceAccountPath;
+          GRIDDER_CURL_IMPERSONATE_BINARY_PATH = "${cfg.cuimpPkg}/bin/curl-impersonate";
           LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.openssl ];
         };
         serviceConfig = {
@@ -95,4 +106,3 @@ in
     };
   };
 }
-
